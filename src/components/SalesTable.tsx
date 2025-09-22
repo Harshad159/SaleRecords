@@ -39,22 +39,21 @@ const SalesTable: React.FC<Props> = ({ data, onView, onEdit }) => {
 
           <div className="actions-cell">
             <button
-              className="btn-icon"
+              className="btn-small"
               onClick={() => onView(r)}
               aria-label="View details"
               title="View"
             >
-              {/* Icons are served from public/icons/ */}
-              <img src="icons/view.png" alt="" />
+              View
             </button>
 
             <button
-              className="btn-icon warn"
+              className="btn-small warn"
               onClick={() => onEdit(r)}
               aria-label="Edit row"
               title="Edit"
             >
-              <img src="icons/edit.png" alt="" />
+              Edit
             </button>
           </div>
         </div>
