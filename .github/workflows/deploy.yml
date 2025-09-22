@@ -23,13 +23,13 @@ jobs:
           node-version: 20
           cache: 'npm'
 
-      # No lockfile in the repo, so use npm install (NOT npm ci)
+      # Use npm install (no lockfile required)
       - run: npm install --no-fund --no-audit
 
-      # Build the site (Vite)
+      # Build Vite project
       - run: npm run build
 
-      # Upload the dist/ folder as the Pages artifact
+      # Upload the dist folder for Pages
       - uses: actions/upload-pages-artifact@v3
         with:
           path: ./dist
