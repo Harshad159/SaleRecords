@@ -5,9 +5,10 @@ type Props = {
   data: SaleRecord[]
   onView: (rec: SaleRecord) => void
   onEdit: (rec: SaleRecord) => void
+  onDelete: (rec: SaleRecord) => void
 }
 
-const SalesTable: React.FC<Props> = ({ data, onView, onEdit }) => {
+const SalesTable: React.FC<Props> = ({ data, onView, onEdit, onDelete }) => {
   return (
     <div style={{ display: 'grid', gap: 8 }}>
       <div className="row header">
@@ -54,6 +55,15 @@ const SalesTable: React.FC<Props> = ({ data, onView, onEdit }) => {
               title="Edit"
             >
               Edit
+            </button>
+
+            <button
+              className="btn-small danger"
+              onClick={() => onDelete(r)}
+              aria-label="Delete row"
+              title="Delete"
+            >
+              Delete
             </button>
           </div>
         </div>
