@@ -18,7 +18,7 @@ const SalesTable: React.FC<Props> = ({ data, onView, onEdit }) => {
         <div>DC #</div>
         <div>Date</div>
         <div>Contact</div>
-        <div>Actions</div>
+        <div className="actions-cell">Actions</div>
       </div>
 
       {data.map((r) => (
@@ -37,12 +37,23 @@ const SalesTable: React.FC<Props> = ({ data, onView, onEdit }) => {
             {r.contact}
           </div>
 
-          <div style={{ display: 'flex', gap: 8 }}>
-            <button className="btn secondary" onClick={() => onView(r)} aria-label="View details">
-              View
+          <div className="actions-cell">
+            <button
+              className="btn-icon"
+              onClick={() => onView(r)}
+              aria-label="View details"
+              title="View"
+            >
+              <img src="icons/view.png" alt="View" />
             </button>
-            <button className="btn" onClick={() => onEdit(r)} aria-label="Edit row">
-              Edit
+
+            <button
+              className="btn-icon warn"
+              onClick={() => onEdit(r)}
+              aria-label="Edit row"
+              title="Edit"
+            >
+              <img src="icons/edit.png" alt="Edit" />
             </button>
           </div>
         </div>
