@@ -3,10 +3,13 @@ import './styles.css'
 import SalesTable from './components/SalesTable'
 import AddSaleModal from './components/AddSaleModal'
 import ViewModal from './components/ViewModal'
+import Splash from './components/Splash'
 import { loadRecords, saveRecords } from './storage'
 import type { SaleRecord } from './types'
 import { exportToExcel } from './utils/exportExcel'
-import { CLOUD_SYNC } from './config' // remains but disabled in your config
+import { CLOUD_SYNC } from './config' // stays disabled in your config
+
+const PASSWORD = 'Narsinha@123'
 
 const App: React.FC = () => {
   const [records, setRecords] = useState<SaleRecord[]>(() => loadRecords())
@@ -16,9 +19,18 @@ const App: React.FC = () => {
   const [viewing, setViewing] = useState<SaleRecord | null>(null)
   const [editing, setEditing] = useState<SaleRecord | null>(null)
 
+  const [showSplash, setShowSplash] = useState(true)
+
+  // Save to localStorage whenever records change
   useEffect(() => {
     saveRecords(records)
   }, [records])
+
+  // Simple splash timeout
+  useEffect(() => {
+    const t = setTimeout(() => setShowSplash(false), 1200)
+    return () => clearTimeout(t)
+  }, [])
 
   const filtered = useMemo(() => {
     const s = q.trim().toLowerCase()
@@ -44,12 +56,25 @@ const App: React.FC = () => {
   }, [q, records])
 
   const addRecord = (rec: SaleRecord) => setRecords((prev) => [rec, ...prev])
-
   const saveEdited = (rec: SaleRecord) =>
     setRecords((prev) => prev.map((r) => (r.id === rec.id ? rec : r)))
 
+  const deleteRecord = (rec: SaleRecord) => {
+    const ok = window.confirm(`Delete "${rec.serial}" for ${rec.customer}? This cannot be undone.`)
+    if (!ok) return
+    const pwd = window.prompt('Enter delete password:')
+    if (pwd !== PASSWORD) {
+      alert('Incorrect password.')
+      return
+    }
+    setRecords((prev) => prev.filter((r) => r.id !== rec.id))
+    alert('Record deleted.')
+  }
+
   return (
     <div>
+      {showSplash && <Splash />}
+
       <div className="brand">
         <div
           style={{
@@ -90,7 +115,6 @@ const App: React.FC = () => {
             <button className="btn secondary" onClick={() => exportToExcel(filtered, 'sales.xlsx')}>
               ⬇ Export to Excel
             </button>
-            {/* CLOUD_SYNC.enabled is false in your config, so this stays hidden */}
             {CLOUD_SYNC.enabled && <button className="btn ghost">☁︎ Sync to Cloud</button>}
           </div>
         </div>
@@ -99,6 +123,7 @@ const App: React.FC = () => {
           data={filtered}
           onView={(rec) => setViewing(rec)}
           onEdit={(rec) => setEditing(rec)}
+          onDelete={deleteRecord}
         />
 
         <div className="footer">Data is stored locally in your browser (localStorage). This is a PWA and works offline.</div>
