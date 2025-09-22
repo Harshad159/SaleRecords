@@ -1,4 +1,4 @@
-# Narsinha Sales • PWA
+ # Narsinha Sales • PWA
 
 > **OFFLINE-ONLY MODE:** Cloud sync is disabled by default. Data is saved locally per device (browser/phone). Use **Export to Excel** for manual backups.
 
