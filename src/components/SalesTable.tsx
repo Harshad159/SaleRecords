@@ -44,7 +44,8 @@ const SalesTable: React.FC<Props> = ({ data, onView, onEdit }) => {
               aria-label="View details"
               title="View"
             >
-              <img src="icons/view.png" alt="View" />
+              {/* Icons are served from public/icons/ */}
+              <img src="icons/view.png" alt="" />
             </button>
 
             <button
@@ -53,7 +54,7 @@ const SalesTable: React.FC<Props> = ({ data, onView, onEdit }) => {
               aria-label="Edit row"
               title="Edit"
             >
-              <img src="icons/edit.png" alt="Edit" />
+              <img src="icons/edit.png" alt="" />
             </button>
           </div>
         </div>
