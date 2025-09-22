@@ -43,12 +43,12 @@ input::placeholder, textarea::placeholder { color:#7f8b98; }
 
 .table { width:100%; border-collapse:separate; border-spacing:0 8px; }
 
-/* Row grid — widened last column to fit icon buttons */
+/* Row grid — last column widened to fit icon buttons */
 .row {
   background: linear-gradient(180deg, #132235, #0e1b2a);
   border:1px solid var(--border); border-radius:12px;
   display:grid;
-  grid-template-columns: 140px 1fr 100px 160px 140px 140px 1.2fr 140px; /* last column wider */
+  grid-template-columns: 140px 1fr 100px 160px 140px 140px 1.2fr 140px;
   align-items:center; padding:10px 12px; gap:12px;
 }
 .row.header { background:transparent; border:none; font-weight:700; color:var(--muted); text-transform:uppercase; font-size:12px; }
@@ -98,14 +98,17 @@ input::placeholder, textarea::placeholder { color:#7f8b98; }
 }
 .btn-icon:hover { filter: brightness(1.05); }
 .btn-icon:active { transform: translateY(1px); }
-.btn-icon.warn { background: #ffd166; } /* subtle difference for edit */
+.btn-icon.warn { background: #ffd166; }
 
 .btn-icon img {
-  width: 20px; height: 20px; display:block; pointer-events:none;
+  width: 20px;
+  height: 20px;
+  display: block;
+  pointer-events: none;
   filter: drop-shadow(0 1px 1px rgba(0,0,0,.25));
 }
 
-/* Small screens: stack grid a bit tighter */
+/* Responsive tweaks */
 @media (max-width: 960px) {
   .row {
     grid-template-columns: 120px 1fr 80px 140px 120px 120px 1fr 120px;
