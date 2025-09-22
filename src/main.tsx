@@ -6,7 +6,7 @@ const container = document.getElementById('root')!
 const root = createRoot(container)
 root.render(<App />)
 
-// Register service worker for PWA
+// PWA: register service worker with a RELATIVE path (works on GitHub Pages)
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
     navigator.serviceWorker.register('sw.js').catch(console.error)
