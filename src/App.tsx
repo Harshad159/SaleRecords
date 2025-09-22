@@ -7,7 +7,7 @@ import Splash from './components/Splash'
 import { loadRecords, saveRecords } from './storage'
 import type { SaleRecord } from './types'
 import { exportToExcel } from './utils/exportExcel'
-import { CLOUD_SYNC } from './config' // stays disabled in your config
+import { CLOUD_SYNC } from './config'
 
 const PASSWORD = 'Narsinha@123'
 
@@ -21,17 +21,18 @@ const App: React.FC = () => {
 
   const [showSplash, setShowSplash] = useState(true)
 
-  // Save to localStorage whenever records change
+  // Persist to localStorage
   useEffect(() => {
     saveRecords(records)
   }, [records])
 
-  // Simple splash timeout
+  // Splash (cosmetic)
   useEffect(() => {
     const t = setTimeout(() => setShowSplash(false), 1200)
     return () => clearTimeout(t)
   }, [])
 
+  // 🔎 Search across all fields EXCEPT 'manufacturer'
   const filtered = useMemo(() => {
     const s = q.trim().toLowerCase()
     if (!s) return records
@@ -45,7 +46,7 @@ const App: React.FC = () => {
         r.date,
         r.contact,
         r.voltageClass,
-        r.manufacturer,
+        // r.manufacturer,   <-- intentionally NOT searchable per your request
         r.gstNo,
         r.warranty,
         r.remarks,
@@ -106,7 +107,11 @@ const App: React.FC = () => {
         <div className="toolbar" style={{ marginBottom: 16, justifyContent: 'space-between' }}>
           <div className="search" style={{ flex: 1, maxWidth: 520 }}>
             <span className="search-icon">🔎</span>
-            <input placeholder="Search records by any field..." value={q} onChange={(e) => setQ(e.target.value)} />
+            <input
+              placeholder="Search records by any field..."
+              value={q}
+              onChange={(e) => setQ(e.target.value)}
+            />
           </div>
           <div style={{ display: 'flex', gap: 8 }}>
             <button className="btn" onClick={() => setShowAdd(true)}>
@@ -126,7 +131,9 @@ const App: React.FC = () => {
           onDelete={deleteRecord}
         />
 
-        <div className="footer">Data is stored locally in your browser (localStorage). This is a PWA and works offline.</div>
+        <div className="footer">
+          Data is stored locally in your browser (localStorage). This is a PWA and works offline.
+        </div>
       </div>
 
       {showAdd && <AddSaleModal onClose={() => setShowAdd(false)} onSave={addRecord} />}
