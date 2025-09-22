@@ -4,7 +4,13 @@ import SalesTable from './components/SalesTable'
 import AddSaleModal from './components/AddSaleModal'
 import ViewModal from './components/ViewModal'
 import Splash from './components/Splash'
-import { loadRecords, saveRecords } from './storage'
+import {
+  loadRecords,
+  addRecord as addRecordToDB,
+  updateRecord,
+  deleteRecord as deleteRecordFromDB,
+  migrateFromLocalStorage,
+} from './storage'
 import type { SaleRecord } from './types'
 import { exportToExcel } from './utils/exportExcel'
 import { CLOUD_SYNC } from './config'
@@ -12,7 +18,7 @@ import { CLOUD_SYNC } from './config'
 const PASSWORD = 'Narsinha@123'
 
 const App: React.FC = () => {
-  const [records, setRecords] = useState<SaleRecord[]>(() => loadRecords())
+  const [records, setRecords] = useState<SaleRecord[]>([])
   const [q, setQ] = useState('')
   const [showAdd, setShowAdd] = useState(false)
 
@@ -21,10 +27,14 @@ const App: React.FC = () => {
 
   const [showSplash, setShowSplash] = useState(true)
 
-  // Persist to localStorage
+  // Run migration + load from IndexedDB
   useEffect(() => {
-    saveRecords(records)
-  }, [records])
+    ;(async () => {
+      await migrateFromLocalStorage()
+      const all = await loadRecords()
+      setRecords(all)
+    })()
+  }, [])
 
   // Splash (cosmetic)
   useEffect(() => {
@@ -46,7 +56,7 @@ const App: React.FC = () => {
         r.date,
         r.contact,
         r.voltageClass,
-        // r.manufacturer,   <-- intentionally NOT searchable per your request
+        // manufacturer intentionally excluded
         r.gstNo,
         r.warranty,
         r.remarks,
@@ -56,11 +66,18 @@ const App: React.FC = () => {
     })
   }, [q, records])
 
-  const addRecord = (rec: SaleRecord) => setRecords((prev) => [rec, ...prev])
-  const saveEdited = (rec: SaleRecord) =>
-    setRecords((prev) => prev.map((r) => (r.id === rec.id ? rec : r)))
+  // Handlers
+  const addRecord = async (rec: SaleRecord) => {
+    await addRecordToDB(rec)
+    setRecords((prev) => [rec, ...prev])
+  }
 
-  const deleteRecord = (rec: SaleRecord) => {
+  const saveEdited = async (rec: SaleRecord) => {
+    await updateRecord(rec)
+    setRecords((prev) => prev.map((r) => (r.id === rec.id ? rec : r)))
+  }
+
+  const deleteRecord = async (rec: SaleRecord) => {
     const ok = window.confirm(`Delete "${rec.serial}" for ${rec.customer}? This cannot be undone.`)
     if (!ok) return
     const pwd = window.prompt('Enter delete password:')
@@ -68,6 +85,7 @@ const App: React.FC = () => {
       alert('Incorrect password.')
       return
     }
+    await deleteRecordFromDB(rec.id)
     setRecords((prev) => prev.filter((r) => r.id !== rec.id))
     alert('Record deleted.')
   }
@@ -132,7 +150,7 @@ const App: React.FC = () => {
         />
 
         <div className="footer">
-          Data is stored locally in your browser (localStorage). This is a PWA and works offline.
+          Data is stored in your browser using IndexedDB. Works fully offline.
         </div>
       </div>
 
