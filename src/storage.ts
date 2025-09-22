@@ -1,72 +1,61 @@
+import { openDB } from 'idb'
 import type { SaleRecord } from './types'
 
-const KEY = 'salesRecords'
+const DB_NAME = 'narsinha-sales'
+const STORE = 'records'
 
-export function loadRecords(): SaleRecord[] {
-  const raw = localStorage.getItem(KEY)
-  if (!raw) return sampleData
+// Init DB
+async function getDB() {
+  return openDB(DB_NAME, 1, {
+    upgrade(db) {
+      if (!db.objectStoreNames.contains(STORE)) {
+        db.createObjectStore(STORE, { keyPath: 'id' })
+      }
+    },
+  })
+}
+
+// Load all records
+export async function loadRecords(): Promise<SaleRecord[]> {
+  const db = await getDB()
+  return (await db.getAll(STORE)) as SaleRecord[]
+}
+
+// Add new record
+export async function addRecord(rec: SaleRecord) {
+  const db = await getDB()
+  await db.put(STORE, rec)
+}
+
+// Update existing
+export async function updateRecord(rec: SaleRecord) {
+  const db = await getDB()
+  await db.put(STORE, rec)
+}
+
+// Delete record
+export async function deleteRecord(id: string) {
+  const db = await getDB()
+  await db.delete(STORE, id)
+}
+
+// ===== Migration: move from localStorage → IndexedDB (runs once) =====
+export async function migrateFromLocalStorage() {
   try {
-    const arr = JSON.parse(raw) as SaleRecord[]
-    return arr
-  } catch {
-    return sampleData
+    const raw = localStorage.getItem('sales-records')
+    if (!raw) return
+    const parsed: SaleRecord[] = JSON.parse(raw)
+    if (!Array.isArray(parsed) || parsed.length === 0) return
+
+    const db = await getDB()
+    for (const rec of parsed) {
+      await db.put(STORE, rec)
+    }
+
+    // clear old localStorage
+    localStorage.removeItem('sales-records')
+    console.log(`✅ Migrated ${parsed.length} records to IndexedDB.`)
+  } catch (err) {
+    console.error('Migration failed', err)
   }
-}
-
-export function saveRecords(recs: SaleRecord[]) {
-  localStorage.setItem(KEY, JSON.stringify(recs))
-}
-
-// Sample data similar to the screenshot
-const sampleData: SaleRecord[] = [
-  {
-    id: cryptoRandom(),
-    serial: 'T-12345',
-    customer: 'Global Tech Inc.',
-    kva: 500,
-    invoiceNo: 'INV-2024-001',
-    dcNo: 'DC-2024-001',
-    date: '2024-07-28',
-    voltageClass: '11kV/415V',
-    manufacturer: 'Narsinha Engineering Works',
-    contact: 'contact@globaltech.com',
-    salePrice: 0,
-    warranty: '24 Months',
-    remarks: ''
-  },
-  {
-    id: cryptoRandom(),
-    serial: 'T-67890',
-    customer: 'Apex Industries',
-    kva: 750,
-    invoiceNo: 'INV-2024-002',
-    dcNo: 'DC-2024-002',
-    date: '2024-07-29',
-    voltageClass: '11kV/415V',
-    manufacturer: 'Narsinha Engineering Works',
-    contact: 'purchasing@apex.com',
-    salePrice: 0,
-    warranty: '24 Months',
-    remarks: ''
-  },
-  {
-    id: cryptoRandom(),
-    serial: 'T-54321',
-    customer: 'Downtown Mall',
-    kva: 300,
-    invoiceNo: 'INV-2024-003',
-    dcNo: 'DC-2024-003',
-    date: '2024-07-30',
-    voltageClass: '11kV/415V',
-    manufacturer: 'Narsinha Engineering Works',
-    contact: 'manager@downtownmall.com',
-    salePrice: 0,
-    warranty: '24 Months',
-    remarks: ''
-  }
-]
-
-function cryptoRandom() {
-  // Simple random id; in browser we have crypto.randomUUID
-  return (Math.random().toString(36).slice(2) + Math.random().toString(36).slice(2))
 }
