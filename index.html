@@ -8,7 +8,7 @@
     />
     <meta name="theme-color" content="#0b1620" />
 
-    <!-- IMPORTANT: relative paths so it works under /SaleRecords/ -->
+    <!-- IMPORTANT: relative paths so they work under /SaleRecords/ -->
     <link rel="manifest" href="manifest.webmanifest" />
     <link rel="icon" href="icons/icon-192.png" sizes="192x192" />
     <link rel="apple-touch-icon" href="icons/icon-192.png" />
@@ -18,7 +18,18 @@
   <body>
     <div id="root"></div>
 
-    <!-- Vite will rewrite this for production; fine to keep absolute during dev -->
+    <!-- Register the service worker -->
+    <script>
+      if ('serviceWorker' in navigator) {
+        window.addEventListener('load', () => {
+          navigator.serviceWorker.register('sw.js').catch((err) => {
+            console.error('Service worker registration failed:', err);
+          });
+        });
+      }
+    </script>
+
+    <!-- Vite dev entry (Vite rewrites this on build) -->
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>
