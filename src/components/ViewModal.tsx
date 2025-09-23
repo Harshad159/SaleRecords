@@ -1,48 +1,82 @@
-import React from 'react'
-import type { SaleRecord } from '../types'
+import React from 'react';
+import type { SaleRecord } from '../types';
 
 type Props = {
-  record: SaleRecord
-  onClose: () => void
-}
+  isOpen: boolean;
+  record: SaleRecord | null;
+  onClose: () => void;
+};
 
-const Row = ({ k, v }: { k: string; v: React.ReactNode }) => (
-  <div style={{ display: 'grid', gridTemplateColumns: '180px 1fr', gap: 12, padding: '6px 0' }}>
-    <div className="muted">{k}</div>
-    <div>{v}</div>
-  </div>
-)
+export default function ViewModal({ isOpen, record, onClose }: Props) {
+  if (!isOpen || !record) return null;
 
-const ViewModal: React.FC<Props> = ({ record, onClose }) => {
   return (
-    <div className="modal-backdrop" onClick={(e) => (e.target === e.currentTarget ? onClose() : null)}>
-      <div className="modal">
-        <header>
-          <h2 style={{ margin: 0 }}>Record Details</h2>
-        </header>
-        <div style={{ padding: 16 }}>
-          <Row k="Serial #" v={record.serial} />
-          <Row k="Customer" v={record.customer} />
-          <Row k="KVA" v={record.kva} />
-          <Row k="Invoice #" v={record.invoiceNo} />
-          <Row k="DC #" v={record.dcNo} />
-          <Row k="Date" v={record.date} />
-          <Row k="Contact" v={record.contact} />
-          <Row k="Voltage Class" v={record.voltageClass} />
-          <Row k="Manufacturer" v={record.manufacturer} />
-          <Row k="GST No." v={record.gstNo || '—'} />
-          <Row k="Sale Price" v={record.salePrice ?? '—'} />
-          <Row k="Warranty" v={record.warranty || '—'} />
-          <Row k="Remarks" v={record.remarks || '—'} />
+    <div className="modal-backdrop" onClick={onClose}>
+      <div className="modal" onClick={(e) => e.stopPropagation()}>
+        <h2>Dispatch Details</h2>
+
+        <div className="view-grid">
+          <div>
+            <label>Date</label>
+            <div>{record.date || '-'}</div>
+          </div>
+
+          <div>
+            <label>Supplier</label>
+            <div>{record.supplier || '-'}</div>
+          </div>
+
+          <div>
+            <label>GST Number</label>
+            <div>{record.gstNumber || '-'}</div>
+          </div>
+
+          <div>
+            <label>DC Number</label>
+            <div>{record.dcNumber || '-'}</div>
+          </div>
+
+          <div>
+            <label>Manufacturer</label>
+            <div>{record.manufacturer || '-'}</div>
+          </div>
+
+          <div className="full">
+            <label>Remarks</label>
+            <div style={{ whiteSpace: 'pre-wrap' }}>{record.remarks || '-'}</div>
+          </div>
         </div>
-        <div className="actions">
-          <button className="btn" onClick={onClose}>
-            Close
-          </button>
+
+        <div className="items-block">
+          <h3>Transformers in this DC</h3>
+          {record.items?.length ? (
+            <table className="sales-table">
+              <thead>
+                <tr>
+                  <th>#</th>
+                  <th>Serial Number</th>
+                  <th>KVA</th>
+                </tr>
+              </thead>
+              <tbody>
+                {record.items.map((it, i) => (
+                  <tr key={i}>
+                    <td>{i + 1}</td>
+                    <td>{it.serialNumber || '-'}</td>
+                    <td>{it.kva ?? 0}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          ) : (
+            <div style={{ opacity: 0.7 }}>No items</div>
+          )}
+        </div>
+
+        <div className="modal-actions">
+          <button className="btn" onClick={onClose}>Close</button>
         </div>
       </div>
     </div>
-  )
+  );
 }
-
-export default ViewModal
