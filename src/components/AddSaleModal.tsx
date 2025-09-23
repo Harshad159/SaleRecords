@@ -1,16 +1,19 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import type { SaleRecord, SaleItem } from '../types';
 import { addSale, updateSale, getGSTBySupplier } from '../storage';
-import { v4 as uuidv4 } from 'uuid';
 
 type Props = {
   isOpen: boolean;
   onClose: () => void;
-  onSaved: () => void;     // call after save to refresh table
-  editing?: SaleRecord | null; // if provided, we edit instead of add
+  onSaved: () => void;
+  editing?: SaleRecord | null;
 };
 
 const emptyItem = (): SaleItem => ({ serialNumber: '', kva: 0 });
+const genId = () =>
+  (typeof crypto !== 'undefined' && (crypto as any).randomUUID)
+    ? (crypto as any).randomUUID()
+    : String(Date.now() + Math.random());
 
 export default function AddSaleModal({ isOpen, onClose, onSaved, editing }: Props) {
   const isEditing = !!editing;
@@ -36,9 +39,7 @@ export default function AddSaleModal({ isOpen, onClose, onSaved, editing }: Prop
       setRemarks(editing.remarks || '');
       setAutoGSTApplied(false);
     } else {
-      // defaults for new entry
-      const today = new Date();
-      const iso = today.toISOString().slice(0, 10);
+      const iso = new Date().toISOString().slice(0, 10);
       setDate(iso);
       setSupplier('');
       setGstNumber('');
@@ -50,13 +51,11 @@ export default function AddSaleModal({ isOpen, onClose, onSaved, editing }: Prop
     }
   }, [isOpen, editing]);
 
-  // Auto-fill GST when supplier matches existing records.
-  // We only overwrite GST if the field is empty (so user can change it if needed).
   useEffect(() => {
     let alive = true;
     (async () => {
       if (!supplier.trim()) return;
-      if (gstNumber.trim()) return; // respect user-entered value
+      if (gstNumber.trim()) return;
       const found = await getGSTBySupplier(supplier.trim());
       if (!alive) return;
       if (found) {
@@ -66,17 +65,13 @@ export default function AddSaleModal({ isOpen, onClose, onSaved, editing }: Prop
         setAutoGSTApplied(false);
       }
     })();
-    return () => {
-      alive = false;
-    };
-    // include gstNumber so we don't override if user typed one
+    return () => { alive = false; };
   }, [supplier, gstNumber]);
 
   const addItemRow = () => setItems(prev => [...prev, emptyItem()]);
   const removeItemRow = (idx: number) => {
     setItems(prev => prev.length > 1 ? prev.filter((_, i) => i !== idx) : [emptyItem()]);
   };
-
   const updateItemField = (idx: number, field: keyof SaleItem, value: string) => {
     setItems(prev => prev.map((it, i) => i === idx ? {
       ...it,
@@ -87,14 +82,13 @@ export default function AddSaleModal({ isOpen, onClose, onSaved, editing }: Prop
   const canSave = useMemo(() => {
     if (!date || !supplier || !dcNumber || !manufacturer) return false;
     if (!items.length) return false;
-    // at least one item with serialNumber
     if (!items.some(it => String(it.serialNumber).trim().length > 0)) return false;
     return true;
   }, [date, supplier, dcNumber, manufacturer, items]);
 
   async function handleSave() {
     const record: SaleRecord = {
-      id: editing?.id || uuidv4(),
+      id: editing?.id || genId(),
       date: date.trim(),
       supplier: supplier.trim(),
       gstNumber: gstNumber.trim(),
@@ -179,7 +173,6 @@ export default function AddSaleModal({ isOpen, onClose, onSaved, editing }: Prop
           </label>
         </div>
 
-        {/* Dynamic Items */}
         <div className="items-block">
           <div className="items-header">
             <h3>Transformers in this DC</h3>
