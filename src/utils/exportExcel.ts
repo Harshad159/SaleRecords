@@ -1,79 +1,80 @@
-import * as XLSX from 'xlsx'
-import type { SaleRecord } from '../types'
-import { loadRecords } from '../storage'
+// Export sales to Excel (XLSX) using the NEW schema with items[].
+// Requires the 'xlsx' package: npm i xlsx
+// Columns: Date, Supplier, GST Number, DC Number, Manufacturer, Serial Number, KVA, Remarks
 
-/**
- * Export sales to an Excel file.
- * - If `data` is provided (e.g., filtered array from UI), it uses that.
- * - If `data` is empty/undefined, it will fetch **all** records from IndexedDB.
- */
-export async function exportToExcel(
-  data: SaleRecord[] | undefined | null,
-  filename: string = 'sales.xlsx'
-) {
-  let rows: SaleRecord[] = Array.isArray(data) && data.length ? data : await loadRecords()
+import * as XLSX from 'xlsx';
+import type { SaleRecord } from '../types';
 
-  // Normalize rows (avoid undefined values in sheet)
-  const safe = rows.map((r) => ({
-    id: r.id,
-    serial: r.serial ?? '',
-    customer: r.customer ?? '',
-    kva: r.kva ?? '',
-    voltageClass: r.voltageClass ?? '',
-    manufacturer: r.manufacturer ?? '',
-    date: r.date ?? '',
-    invoiceNo: r.invoiceNo ?? '',
-    dcNo: r.dcNo ?? '',
-    contact: r.contact ?? '',
-    gstNo: r.gstNo ?? '',
-    salePrice: r.salePrice ?? '',
-    warranty: r.warranty ?? '',
-    remarks: r.remarks ?? ''
-  }))
+type ExportRow = {
+  Date: string;
+  Supplier: string;
+  'GST Number': string;
+  'DC Number': string;
+  Manufacturer: string;
+  'Serial Number': string;
+  KVA: number | '';
+  Remarks: string;
+};
 
-  // Optional: choose column order & headers
-  const headers = [
-    ['ID', 'Serial #', 'Customer', 'KVA', 'Voltage Class', 'Manufacturer', 'Date', 'Invoice #', 'DC #', 'Contact', 'GST No.', 'Sale Price', 'Warranty', 'Remarks']
-  ]
-  const body = safe.map((r) => [
-    r.id,
-    r.serial,
-    r.customer,
-    r.kva,
-    r.voltageClass,
-    r.manufacturer,
-    r.date,
-    r.invoiceNo,
-    r.dcNo,
-    r.contact,
-    r.gstNo,
-    r.salePrice,
-    r.warranty,
-    r.remarks
-  ])
+function makeRows(data: SaleRecord[]): ExportRow[] {
+  const rows: ExportRow[] = [];
 
-  const ws = XLSX.utils.aoa_to_sheet([...headers, ...body])
+  for (const rec of data) {
+    const base = {
+      Date: rec.date || '',
+      Supplier: rec.supplier || '',
+      'GST Number': rec.gstNumber || '',
+      'DC Number': rec.dcNumber || '',
+      Manufacturer: rec.manufacturer || '',
+      Remarks: rec.remarks || '',
+    };
 
-  // Column widths (optional fine-tuning)
-  ws['!cols'] = [
-    { wch: 26 }, // ID
-    { wch: 16 }, // Serial
-    { wch: 24 }, // Customer
-    { wch: 8 },  // KVA
-    { wch: 16 }, // Voltage Class
-    { wch: 18 }, // Manufacturer
+    const items = Array.isArray(rec.items) ? rec.items : [];
+
+    if (items.length === 0) {
+      rows.push({
+        ...base,
+        'Serial Number': '',
+        KVA: '',
+      });
+    } else {
+      for (const it of items) {
+        rows.push({
+          ...base,
+          'Serial Number': it.serialNumber || '',
+          KVA: typeof it.kva === 'number' ? it.kva : Number(it.kva || 0),
+        });
+      }
+    }
+  }
+
+  return rows;
+}
+
+export function exportToExcel(sales: SaleRecord[]) {
+  const rows = makeRows(sales);
+
+  // Build worksheet & workbook
+  const ws = XLSX.utils.json_to_sheet(rows, { skipHeader: false });
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Sales');
+
+  // Optional: set column widths for readability
+  const colWidths = [
     { wch: 12 }, // Date
-    { wch: 14 }, // Invoice #
-    { wch: 12 }, // DC #
-    { wch: 24 }, // Contact
-    { wch: 18 }, // GST No.
-    { wch: 12 }, // Sale Price
-    { wch: 14 }, // Warranty
-    { wch: 30 }  // Remarks
-  ]
+    { wch: 24 }, // Supplier
+    { wch: 18 }, // GST Number
+    { wch: 14 }, // DC Number
+    { wch: 18 }, // Manufacturer
+    { wch: 18 }, // Serial Number
+    { wch: 8 },  // KVA
+    { wch: 30 }, // Remarks
+  ];
+  (ws['!cols'] as any) = colWidths;
 
-  const wb = XLSX.utils.book_new()
-  XLSX.utils.book_append_sheet(wb, ws, 'Sales')
+  // File name: Sales_YYYY-MM-DD.xlsx
+  const today = new Date().toISOString().slice(0, 10);
+  const fileName = `Sales_${today}.xlsx`;
 
-  XLSX.writeFile(wb, filename)
+  XLSX.writeFile(wb, fileName);
 }
