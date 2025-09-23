@@ -1,4 +1,4 @@
-// storage.ts — IndexedDB storage with migration + compat wrappers
+// src/storage.ts — IndexedDB storage with migration + compat wrappers
 import { openDB, IDBPDatabase } from 'idb';
 import type { SaleRecord } from './types';
 
@@ -11,17 +11,20 @@ let dbPromise: Promise<IDBPDatabase<any>> | null = null;
 function getDB() {
   if (!dbPromise) {
     dbPromise = openDB(DB_NAME, DB_VERSION, {
-      upgrade(db, oldVersion) {
+      // NOTE: upgrade signature has (db, oldVersion, newVersion, tx)
+      upgrade(db, _oldVersion, _newVersion, tx) {
         if (!db.objectStoreNames.contains(STORE)) {
           const store = db.createObjectStore(STORE, { keyPath: 'id' });
           store.createIndex('date', 'date', { unique: false });
           store.createIndex('supplier', 'supplier', { unique: false });
         } else {
-          const store = db.transaction.objectStore(STORE);
-          if (!store.indexNames.contains('date')) {
+          // Use the transaction provided by idb during upgrade
+          const store = tx.objectStore(STORE);
+          const names = Array.from(store.indexNames as any as string[]);
+          if (!names.includes('date')) {
             store.createIndex('date', 'date', { unique: false });
           }
-          if (!store.indexNames.contains('supplier')) {
+          if (!names.includes('supplier')) {
             store.createIndex('supplier', 'supplier', { unique: false });
           }
         }
@@ -71,8 +74,12 @@ export async function getGSTBySupplier(supplier: string): Promise<string | null>
 // ---- Migration from legacy localStorage (call once on app start) ----
 export async function migrateFromLocalStorage(): Promise<void> {
   try {
-    // Adjust this key if your old app used a different one.
-    const raw = localStorage.getItem('sales') || localStorage.getItem('records') || '';
+    // Adjust keys if your old app used different ones.
+    const raw =
+      localStorage.getItem('sales') ??
+      localStorage.getItem('records') ??
+      '';
+
     if (!raw) return;
 
     const parsed = JSON.parse(raw);
@@ -86,25 +93,21 @@ export async function migrateFromLocalStorage(): Promise<void> {
     }
 
     // Map legacy fields to the new schema
-    // Old fields we saw in your errors: serial, customer, kva, invoiceNo, dcNo
-    // We'll place serial+kva into items[0], and map names accordingly.
-    const mapped: SaleRecord[] = parsed.map((r: any) => {
-      return {
-        id: r.id || crypto.randomUUID?.() || String(Date.now() + Math.random()),
-        date: r.date || r.createdAt || '',
-        supplier: r.supplier || r.customer || '',
-        gstNumber: r.gstNumber || r.gst || '',
-        dcNumber: r.dcNumber || r.dcNo || r.invoiceNo || '',
-        manufacturer: r.manufacturer || '',
-        items: [
-          {
-            serialNumber: r.serial || r.serialNumber || '',
-            kva: Number(r.kva || r.capacity || 0),
-          },
-        ].filter(it => String(it.serialNumber).trim().length > 0),
-        remarks: r.remarks || r.note || '',
-      } as SaleRecord;
-    });
+    const mapped: SaleRecord[] = parsed.map((r: any) => ({
+      id: r.id || (typeof crypto !== 'undefined' && (crypto as any).randomUUID ? (crypto as any).randomUUID() : String(Date.now() + Math.random())),
+      date: r.date || r.createdAt || '',
+      supplier: r.supplier || r.customer || '',
+      gstNumber: r.gstNumber || r.gst || r.gstNo || '',
+      dcNumber: r.dcNumber || r.dcNo || r.invoiceNo || '',
+      manufacturer: r.manufacturer || '',
+      items: [
+        {
+          serialNumber: r.serial || r.serialNumber || '',
+          kva: Number(r.kva || r.capacity || 0),
+        },
+      ].filter((it: any) => String(it.serialNumber).trim().length > 0),
+      remarks: r.remarks || r.note || '',
+    }));
 
     const tx = db.transaction(STORE, 'readwrite');
     for (const rec of mapped) {
@@ -112,11 +115,11 @@ export async function migrateFromLocalStorage(): Promise<void> {
     }
     await tx.done;
 
-    // Optional: remove old localStorage to avoid re-migrating
+    // Optionally clear old LS:
     // localStorage.removeItem('sales');
     // localStorage.removeItem('records');
   } catch {
-    // best-effort migration; ignore errors
+    // best-effort; ignore migration errors
   }
 }
 
