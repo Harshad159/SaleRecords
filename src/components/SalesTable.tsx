@@ -1,68 +1,106 @@
-import React from 'react'
-import type { SaleRecord } from '../types'
+import React, { useMemo, useState } from 'react';
+import type { SaleRecord } from '../types';
 
 type Props = {
-  data: SaleRecord[]
-  onView: (rec: SaleRecord) => void
-  onEdit: (rec: SaleRecord) => void
-  onDelete: (rec: SaleRecord) => void
-}
+  rows: SaleRecord[];
+  onEdit: (rec: SaleRecord) => void;
+  onDelete: (rec: SaleRecord) => void;
+  onView?: (rec: SaleRecord) => void; // optional: if you have a view modal
+};
 
-const SalesTable: React.FC<Props> = ({ data, onView, onEdit, onDelete }) => {
+export default function SalesTable({ rows, onEdit, onDelete, onView }: Props) {
+  const [q, setQ] = useState('');
+
+  const filtered = useMemo(() => {
+    const needle = q.trim().toLowerCase();
+    if (!needle) return rows;
+    // Search by any field EXCEPT manufacturer (as requested earlier)
+    return rows.filter(r => {
+      const hay = [
+        r.date,
+        r.supplier,
+        r.gstNumber,
+        r.dcNumber,
+        r.remarks,
+        ...(r.items || []).map(i => i.serialNumber),
+        ...(r.items || []).map(i => String(i.kva)),
+      ]
+        .filter(Boolean)
+        .join(' ')
+        .toLowerCase();
+      const manuf = (r.manufacturer || '').toLowerCase();
+      return hay.includes(needle) && !manuf.includes(needle);
+    });
+  }, [rows, q]);
+
   return (
-    <div className="records">
-      {/* Desktop table header */}
-      <div className="row header desktop-only">
-        <div>Serial #</div>
-        <div>Customer</div>
-        <div>KVA</div>
-        <div>Invoice #</div>
-        <div>DC #</div>
-        <div>Date</div>
-        <div>Contact</div>
-        <div className="actions-cell">Actions</div>
+    <div className="table-card">
+      <div className="table-toolbar">
+        <input
+          className="search"
+          placeholder="Search (date, supplier, GST, DC, serial, KVA, remarks)…"
+          value={q}
+          onChange={(e) => setQ(e.target.value)}
+        />
       </div>
 
-      {data.map((r) => (
-        <div key={r.id} className="row responsive-card">
-          {/* ===== Phone card header ===== */}
-          <div className="card-head mobile-only">
-            <div className="card-title">
-              <span className="serial">{r.serial}</span>
-              {r.kva ? <span className="badge kvabadge">{r.kva} kVA</span> : null}
-            </div>
-            <div className="customer">{r.customer}</div>
-          </div>
-
-          {/* ===== Desktop cells (hidden on phone) ===== */}
-          <div className="cell desktop-only">{r.serial}</div>
-          <div className="cell desktop-only">{r.customer}</div>
-          <div className="cell desktop-only">{r.kva}</div>
-          <div className="cell desktop-only">{r.invoiceNo}</div>
-          <div className="cell desktop-only">{r.dcNo}</div>
-          <div className="cell desktop-only">{r.date}</div>
-          <div className="cell desktop-only muted" title={r.contact}>
-            {r.contact}
-          </div>
-
-          {/* ===== Phone card body ===== */}
-          <div className="card-body mobile-only">
-            <div className="pair"><span>Invoice #</span><strong>{r.invoiceNo || '—'}</strong></div>
-            <div className="pair"><span>DC #</span><strong>{r.dcNo || '—'}</strong></div>
-            <div className="pair"><span>Date</span><strong>{r.date || '—'}</strong></div>
-            <div className="pair"><span>Contact</span><strong className="ellipsis">{r.contact || '—'}</strong></div>
-          </div>
-
-          {/* ===== Actions ===== */}
-          <div className="actions-cell">
-            <button className="btn-small" onClick={() => onView(r)} aria-label="View">View</button>
-            <button className="btn-small warn" onClick={() => onEdit(r)} aria-label="Edit">Edit</button>
-            <button className="btn-small danger" onClick={() => onDelete(r)} aria-label="Delete">Delete</button>
-          </div>
-        </div>
-      ))}
+      <div className="table-scroll">
+        <table className="sales-table">
+          <thead>
+            <tr>
+              <th>Date</th>
+              <th>Supplier</th>
+              <th>GST</th>
+              <th>DC No.</th>
+              <th>Manufacturer</th>
+              <th>Items</th>
+              <th style={{width: 160}}>Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {filtered.map((r) => (
+              <tr key={r.id}>
+                <td>{r.date}</td>
+                <td>{r.supplier}</td>
+                <td>{r.gstNumber}</td>
+                <td>{r.dcNumber}</td>
+                <td>{r.manufacturer}</td>
+                <td>
+                  {r.items?.length || 0} item(s)
+                  {r.items?.length ? (
+                    <details>
+                      <summary>view</summary>
+                      <ul className="items-list">
+                        {r.items.map((it, i) => (
+                          <li key={i}>
+                            <strong>{it.serialNumber}</strong> — {it.kva} KVA
+                          </li>
+                        ))}
+                      </ul>
+                    </details>
+                  ) : null}
+                </td>
+                <td>
+                  <div className="row-actions">
+                    <button className="btn btn-secondary" onClick={() => onEdit(r)}>Edit</button>
+                    {onView ? (
+                      <button className="btn" onClick={() => onView(r)}>View</button>
+                    ) : null}
+                    <button className="btn btn-danger" onClick={() => onDelete(r)}>Delete</button>
+                  </div>
+                </td>
+              </tr>
+            ))}
+            {!filtered.length && (
+              <tr>
+                <td colSpan={7} style={{ textAlign: 'center', opacity: 0.7 }}>
+                  No records
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
     </div>
-  )
+  );
 }
-
-export default SalesTable
