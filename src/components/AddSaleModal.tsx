@@ -84,108 +84,104 @@ export default function AddSaleModal({ isOpen, onClose, onSaved, editing }: Prop
     );
 
   const canSave = useMemo(() => {
-    if (!date || !supplier || !dcNumber || !manufacturer) return false;
+    if (!date || !supplier.trim() || !dcNumber.trim()) return false;
     if (!items.length) return false;
-    if (!items.some(it => String(it.serialNumber).trim().length > 0)) return false;
-    return true;
-  }, [date, supplier, dcNumber, manufacturer, items]);
+    return items.every(it => it.serialNumber.trim() && it.kva >= 0);
+  }, [date, supplier, dcNumber, items]);
 
-  async function handleSave() {
+  const handleSave = async () => {
+    if (!canSave) return;
+
     const record: SaleRecord = {
-      id: editing?.id || genId(),
-      date: date.trim(),
+      id: editing?.id ?? genId(),
+      date,
       supplier: supplier.trim(),
       gstNumber: gstNumber.trim(),
       dcNumber: dcNumber.trim(),
       manufacturer: manufacturer.trim(),
-      items: items
-        .filter(it => String(it.serialNumber).trim().length > 0)
-        .map(it => ({
-          serialNumber: String(it.serialNumber).trim(),
-          kva: Number(it.kva || 0),
-        })),
+      items: items.map(i => ({
+        serialNumber: i.serialNumber.trim(),
+        kva: Number(i.kva || 0),
+      })),
       remarks: remarks.trim(),
     };
 
-    if (isEditing) {
-      await updateSale(record);
-    } else {
-      await addSale(record);
-    }
+    if (isEditing) await updateSale(record);
+    else await addSale(record);
+
     onSaved();
     onClose();
-  }
+  };
 
   if (!isOpen) return null;
 
   return (
-    <div className="modal-backdrop" onClick={onClose}>
-      <div className="modal" onClick={(e) => e.stopPropagation()}>
+    <div className="modal-backdrop" role="dialog" aria-modal="true">
+      <div className="modal">
         <h2>{isEditing ? 'Edit Dispatch' : 'Add New Sales Record'}</h2>
 
-        {/* DC / Header details */}
         <div className="form-grid">
-          <label>
-            Sale Date
-            <input type="date" value={date} onChange={e => setDate(e.target.value)} />
-          </label>
-
-          <label>
-            DC No.
+          <div className="full">
+            <label>Sale Date</label>
             <input
-              type="text"
-              placeholder="DC / Challan"
+              type="date"
+              value={date}
+              onChange={(e) => setDate(e.target.value)}
+            />
+          </div>
+
+          <div>
+            <label>DC No.</label>
+            <input
+              placeholder="e.g., DC-2025-001"
               value={dcNumber}
-              onChange={e => setDcNumber(e.target.value)}
+              onChange={(e) => setDcNumber(e.target.value)}
             />
-          </label>
+          </div>
 
-          <label>
-            Customer Name (Supplier)
+          <div>
+            <label>Customer / Supplier</label>
             <input
-              type="text"
-              placeholder="Supplier name"
+              placeholder="e.g., Global Tech Inc."
               value={supplier}
-              onChange={e => setSupplier(e.target.value)}
+              onChange={(e) => setSupplier(e.target.value)}
             />
-          </label>
+          </div>
 
-          <label>
-            GST No. {autoGSTApplied && <small className="hint"> (auto-filled)</small>}
+          <div>
+            <label>GST No. {autoGSTApplied && <span className="hint">(auto-filled)</span>}</label>
             <input
-              type="text"
-              placeholder="GSTIN"
+              placeholder="e.g., 29ABCDE1234F1Z5"
               value={gstNumber}
-              onChange={e => setGstNumber(e.target.value)}
+              onChange={(e) => { setGstNumber(e.target.value); setAutoGSTApplied(false); }}
             />
-          </label>
+          </div>
 
-          <label>
-            Manufacturer
+          <div>
+            <label>Manufacturer</label>
             <input
-              type="text"
-              placeholder="Manufacturer"
+              placeholder="e.g., Narsinha Engineering Works"
               value={manufacturer}
-              onChange={e => setManufacturer(e.target.value)}
+              onChange={(e) => setManufacturer(e.target.value)}
             />
-          </label>
+          </div>
 
-          <label className="full">
-            Remarks
+          <div className="full">
+            <label>Remarks</label>
             <textarea
-              placeholder="Optional"
               rows={3}
+              placeholder="Optional notes…"
               value={remarks}
-              onChange={e => setRemarks(e.target.value)}
+              onChange={(e) => setRemarks(e.target.value)}
             />
-          </label>
+          </div>
         </div>
 
-        {/* MULTIPLE ITEMS */}
+        {/* MULTI-ITEM BLOCK */}
         <div className="items-block">
           <div className="items-header">
             <h3>Transformers in this DC</h3>
-            <button className="btn" type="button" onClick={addItemRow}>
+            <button className="btn btn-primary" type="button" onClick={addItemRow}>
               + Add Row
             </button>
           </div>
@@ -196,28 +192,29 @@ export default function AddSaleModal({ isOpen, onClose, onSaved, editing }: Prop
                 <div className="item-field">
                   <label>Serial Number</label>
                   <input
-                    type="text"
-                    placeholder="e.g. T-12345"
+                    placeholder="e.g., T-12345"
                     value={it.serialNumber}
-                    onChange={e => updateItemField(idx, 'serialNumber', e.target.value)}
+                    onChange={(e) => updateItemField(idx, 'serialNumber', e.target.value)}
                   />
                 </div>
+
                 <div className="item-field">
                   <label>KVA Rating</label>
                   <input
                     type="number"
+                    inputMode="numeric"
                     min={0}
-                    step="1"
-                    placeholder="e.g. 100"
-                    value={it.kva ?? 0}
-                    onChange={e => updateItemField(idx, 'kva', e.target.value)}
+                    value={Number(it.kva) || 0}
+                    onChange={(e) => updateItemField(idx, 'kva', e.target.value)}
                   />
                 </div>
+
                 <div className="item-actions">
                   <button
                     className="btn btn-danger"
                     type="button"
                     onClick={() => removeItemRow(idx)}
+                    title="Remove this row"
                   >
                     Remove
                   </button>
@@ -228,8 +225,10 @@ export default function AddSaleModal({ isOpen, onClose, onSaved, editing }: Prop
         </div>
 
         <div className="modal-actions">
-          <button className="btn" type="button" onClick={onClose}>Cancel</button>
-          <button className="btn btn-primary" type="button" disabled={!canSave} onClick={handleSave}>
+          <button className="btn btn-ghost" type="button" onClick={onClose}>
+            Cancel
+          </button>
+          <button className="btn btn-primary" disabled={!canSave} onClick={handleSave}>
             {isEditing ? 'Save Changes' : 'Add Record'}
           </button>
         </div>
