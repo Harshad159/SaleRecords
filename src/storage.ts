@@ -1,32 +1,26 @@
-// src/storage.ts — IndexedDB storage with migration + compat wrappers
-import { openDB, IDBPDatabase } from 'idb';
-import type { SaleRecord } from './types';
+// src/storage.ts
+import { openDB, type IDBPDatabase } from 'idb';
+import type { SaleRecord, SaleItem } from './types';
 
 const DB_NAME = 'narsinha-sales-db';
-const STORE = 'sales';
-const DB_VERSION = 3; // bump if schema changes
+const DB_VERSION = 1;
+const STORE_SALES = 'sales';
+const STORE_SUPPLIERS = 'suppliers'; // supplier -> gst
 
 let dbPromise: Promise<IDBPDatabase<any>> | null = null;
 
 function getDB() {
   if (!dbPromise) {
     dbPromise = openDB(DB_NAME, DB_VERSION, {
-      // NOTE: upgrade signature has (db, oldVersion, newVersion, tx)
-      upgrade(db, _oldVersion, _newVersion, tx) {
-        if (!db.objectStoreNames.contains(STORE)) {
-          const store = db.createObjectStore(STORE, { keyPath: 'id' });
-          store.createIndex('date', 'date', { unique: false });
-          store.createIndex('supplier', 'supplier', { unique: false });
-        } else {
-          // Use the transaction provided by idb during upgrade
-          const store = tx.objectStore(STORE);
-          const names = Array.from(store.indexNames as any as string[]);
-          if (!names.includes('date')) {
-            store.createIndex('date', 'date', { unique: false });
-          }
-          if (!names.includes('supplier')) {
-            store.createIndex('supplier', 'supplier', { unique: false });
-          }
+      upgrade(db) {
+        if (!db.objectStoreNames.contains(STORE_SALES)) {
+          const s = db.createObjectStore(STORE_SALES, { keyPath: 'id' });
+          s.createIndex('by_date', 'date');
+          s.createIndex('by_supplier', 'supplier');
+          s.createIndex('by_dc', 'dcNumber');
+        }
+        if (!db.objectStoreNames.contains(STORE_SUPPLIERS)) {
+          db.createObjectStore(STORE_SUPPLIERS, { keyPath: 'supplier' });
         }
       },
     });
@@ -34,97 +28,85 @@ function getDB() {
   return dbPromise!;
 }
 
-// ---- Core API ----
-export async function addSale(rec: SaleRecord) {
+/** Create: add sale record */
+export async function addSale(rec: SaleRecord): Promise<void> {
   const db = await getDB();
-  await db.put(STORE, rec);
-}
-export async function updateSale(rec: SaleRecord) {
-  const db = await getDB();
-  await db.put(STORE, rec);
-}
-export async function deleteSale(id: string) {
-  const db = await getDB();
-  await db.delete(STORE, id);
-}
-export async function getAllSales(): Promise<SaleRecord[]> {
-  const db = await getDB();
-  return await db.getAll(STORE);
+  await db.put(STORE_SALES, rec);
+  // keep supplier->GST for autofill
+  if (rec.supplier && rec.gstNumber) {
+    await db.put(STORE_SUPPLIERS, { supplier: rec.supplier, gstNumber: rec.gstNumber });
+  }
 }
 
-// GST auto-fill helper
+/** Read all */
+export async function listSales(): Promise<SaleRecord[]> {
+  const db = await getDB();
+  return await db.getAll(STORE_SALES);
+}
+
+/** Update */
+export async function updateSale(rec: SaleRecord): Promise<void> {
+  const db = await getDB();
+  await db.put(STORE_SALES, rec);
+  if (rec.supplier && rec.gstNumber) {
+    await db.put(STORE_SUPPLIERS, { supplier: rec.supplier, gstNumber: rec.gstNumber });
+  }
+}
+
+/** Delete with the password gate in the UI (simple) */
+export async function deleteSale(id: string): Promise<void> {
+  const db = await getDB();
+  await db.delete(STORE_SALES, id);
+}
+
+/** UI helper: check password and then delete */
+export async function deleteSaleSecure(id: string, password: string): Promise<void> {
+  if (password !== 'Narsinha@123') {
+    throw new Error('Wrong password');
+  }
+  await deleteSale(id);
+}
+
+/** GST autofill */
 export async function getGSTBySupplier(supplier: string): Promise<string | null> {
-  if (!supplier.trim()) return null;
   const db = await getDB();
-  const tx = db.transaction(STORE, 'readonly');
-  const idx = tx.store.index('supplier');
-  const out: SaleRecord[] = [];
-  let cursor = await idx.openCursor(IDBKeyRange.only(supplier));
-  while (cursor) {
-    out.push(cursor.value as SaleRecord);
-    cursor = await cursor.continue();
-  }
-  await tx.done;
-  if (!out.length) return null;
-  out.sort((a, b) => (b.date || '').localeCompare(a.date || ''));
-  const found = out.find(r => r.gstNumber && r.gstNumber.trim().length > 0);
-  return found ? found.gstNumber.trim() : null;
+  const row = await db.get(STORE_SUPPLIERS, supplier);
+  return row?.gstNumber ?? null;
 }
 
-// ---- Migration from legacy localStorage (call once on app start) ----
+/** Optional: simple migration from localStorage once */
 export async function migrateFromLocalStorage(): Promise<void> {
+  const legacy = localStorage.getItem('sales');
+  if (!legacy) return;
   try {
-    // Adjust keys if your old app used different ones.
-    const raw =
-      localStorage.getItem('sales') ??
-      localStorage.getItem('records') ??
-      '';
-
-    if (!raw) return;
-
-    const parsed = JSON.parse(raw);
-    if (!Array.isArray(parsed)) return;
-
-    const db = await getDB();
-    const existing = await db.getAll(STORE);
-    if (existing && existing.length > 0) {
-      // Already migrated previously; skip
-      return;
+    const parsed: any[] = JSON.parse(legacy);
+    if (Array.isArray(parsed)) {
+      const db = await getDB();
+      const tx = db.transaction([STORE_SALES, STORE_SUPPLIERS], 'readwrite');
+      for (const r of parsed) {
+        // tolerate old shapes; keep id if present or create one
+        const id = r.id || crypto.randomUUID();
+        const items: SaleItem[] = r.items || (r.serial ? [{ serialNumber: r.serial, kva: +r.kva || 0 }] : []);
+        const rec: SaleRecord = {
+          id,
+          date: r.date || '',
+          supplier: r.customer || r.supplier || '',
+          gstNumber: r.gstNo || r.gstNumber || '',
+          dcNumber: r.dcNo || r.dcNumber || '',
+          manufacturer: r.manufacturer || '',
+          remarks: r.remarks || '',
+          items,
+        };
+        await tx.store.put(rec);
+        if (rec.supplier && rec.gstNumber) {
+          await tx.db.put(STORE_SUPPLIERS, { supplier: rec.supplier, gstNumber: rec.gstNumber });
+        }
+      }
+      await tx.done;
     }
-
-    // Map legacy fields to the new schema
-    const mapped: SaleRecord[] = parsed.map((r: any) => ({
-      id: r.id || (typeof crypto !== 'undefined' && (crypto as any).randomUUID ? (crypto as any).randomUUID() : String(Date.now() + Math.random())),
-      date: r.date || r.createdAt || '',
-      supplier: r.supplier || r.customer || '',
-      gstNumber: r.gstNumber || r.gst || r.gstNo || '',
-      dcNumber: r.dcNumber || r.dcNo || r.invoiceNo || '',
-      manufacturer: r.manufacturer || '',
-      items: [
-        {
-          serialNumber: r.serial || r.serialNumber || '',
-          kva: Number(r.kva || r.capacity || 0),
-        },
-      ].filter((it: any) => String(it.serialNumber).trim().length > 0),
-      remarks: r.remarks || r.note || '',
-    }));
-
-    const tx = db.transaction(STORE, 'readwrite');
-    for (const rec of mapped) {
-      await tx.store.put(rec);
-    }
-    await tx.done;
-
-    // Optionally clear old LS:
-    // localStorage.removeItem('sales');
-    // localStorage.removeItem('records');
   } catch {
-    // best-effort; ignore migration errors
+    // ignore
+  } finally {
+    localStorage.removeItem('sales');
   }
 }
-
-// ---- Compatibility wrappers (so older imports still work) ----
-export const loadRecords = getAllSales;
-export const addRecord = addSale;
-export const updateRecord = updateSale;
-export const deleteRecord = deleteSale;
