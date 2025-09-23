@@ -1,171 +1,88 @@
-import React, { useEffect, useMemo, useState } from 'react'
-import './styles.css'
-import SalesTable from './components/SalesTable'
-import AddSaleModal from './components/AddSaleModal'
-import ViewModal from './components/ViewModal'
-import Splash from './components/Splash'
-import {
-  loadRecords,
-  addRecord as addRecordToDB,
-  updateRecord,
-  deleteRecord as deleteRecordFromDB,
-  migrateFromLocalStorage,
-} from './storage'
-import type { SaleRecord } from './types'
-import { exportToExcel } from './utils/exportExcel'
-import { CLOUD_SYNC } from './config'
+import React, { useEffect, useState } from 'react';
+import AddSaleModal from './components/AddSaleModal';
+import SalesTable from './components/SalesTable';
+import { getAllSales, addSale, updateSale, deleteSale, migrateFromLocalStorage } from './storage';
+import type { SaleRecord } from './types';
+import './styles.css';
 
-const PASSWORD = 'Narsinha@123'
+export default function App() {
+  const [rows, setRows] = useState<SaleRecord[]>([]);
+  const [isModalOpen, setModalOpen] = useState(false);
+  const [editing, setEditing] = useState<SaleRecord | null>(null);
 
-const App: React.FC = () => {
-  const [records, setRecords] = useState<SaleRecord[]>([])
-  const [q, setQ] = useState('')
-  const [showAdd, setShowAdd] = useState(false)
-
-  const [viewing, setViewing] = useState<SaleRecord | null>(null)
-  const [editing, setEditing] = useState<SaleRecord | null>(null)
-
-  const [showSplash, setShowSplash] = useState(true)
-
-  // Run migration + load from IndexedDB
+  // Load (and migrate once) on first render
   useEffect(() => {
-    ;(async () => {
-      await migrateFromLocalStorage()
-      const all = await loadRecords()
-      setRecords(all)
-    })()
-  }, [])
+    (async () => {
+      // Try migrating legacy localStorage data (safe no-op if none)
+      await migrateFromLocalStorage();
+      const all = await getAllSales();
+      setRows(all);
+    })();
+  }, []);
 
-  // Splash (cosmetic)
-  useEffect(() => {
-    const t = setTimeout(() => setShowSplash(false), 1200)
-    return () => clearTimeout(t)
-  }, [])
+  const openAdd = () => {
+    setEditing(null);
+    setModalOpen(true);
+  };
 
-  // 🔎 Search across all fields EXCEPT 'manufacturer'
-  const filtered = useMemo(() => {
-    const s = q.trim().toLowerCase()
-    if (!s) return records
-    return records.filter((r) => {
-      return [
-        r.serial,
-        r.customer,
-        r.kva?.toString(),
-        r.invoiceNo,
-        r.dcNo,
-        r.date,
-        r.contact,
-        r.voltageClass,
-        // manufacturer intentionally excluded
-        r.gstNo,
-        r.warranty,
-        r.remarks,
-      ]
-        .filter(Boolean)
-        .some((v) => String(v).toLowerCase().includes(s))
-    })
-  }, [q, records])
+  const handleSaved = async () => {
+    const all = await getAllSales();
+    setRows(all);
+  };
 
-  // Handlers
-  const addRecord = async (rec: SaleRecord) => {
-    await addRecordToDB(rec)
-    setRecords((prev) => [rec, ...prev])
-  }
+  const handleEdit = (rec: SaleRecord) => {
+    setEditing(rec);
+    setModalOpen(true);
+  };
 
-  const saveEdited = async (rec: SaleRecord) => {
-    await updateRecord(rec)
-    setRecords((prev) => prev.map((r) => (r.id === rec.id ? rec : r)))
-  }
-
-  const deleteRecord = async (rec: SaleRecord) => {
-    const ok = window.confirm(`Delete "${rec.serial}" for ${rec.customer}? This cannot be undone.`)
-    if (!ok) return
-    const pwd = window.prompt('Enter delete password:')
-    if (pwd !== PASSWORD) {
-      alert('Incorrect password.')
-      return
+  const handleDelete = async (rec: SaleRecord) => {
+    const pwd = prompt('Enter password to delete:');
+    if (pwd !== 'Narsinha@123') {
+      alert('Wrong password. Delete cancelled.');
+      return;
     }
-    await deleteRecordFromDB(rec.id)
-    setRecords((prev) => prev.filter((r) => r.id !== rec.id))
-    alert('Record deleted.')
-  }
+    await deleteSale(rec.id);
+    const all = await getAllSales();
+    setRows(all);
+  };
+
+  const handleView = (rec: SaleRecord) => {
+    // Simple quick view — you may already have a separate modal; hook it here if needed
+    const lines = [
+      `Date: ${rec.date}`,
+      `Supplier: ${rec.supplier}`,
+      `GST: ${rec.gstNumber}`,
+      `DC No: ${rec.dcNumber}`,
+      `Manufacturer: ${rec.manufacturer}`,
+      `Items:`,
+      ...(rec.items || []).map((it, i) => `  ${i + 1}. ${it.serialNumber} — ${it.kva} KVA`),
+      rec.remarks ? `Remarks: ${rec.remarks}` : ''
+    ].filter(Boolean);
+    alert(lines.join('\n'));
+  };
 
   return (
-    <div>
-      {showSplash && <Splash />}
-
-      <div className="brand">
-        <div
-          style={{
-            width: 36,
-            height: 36,
-            borderRadius: 10,
-            background: 'linear-gradient(135deg,#ffb400,#ffdd80)',
-            display: 'grid',
-            placeItems: 'center',
-            color: '#0b1620',
-            fontWeight: 900,
-          }}
-        >
-          N
+    <div className="container">
+      <header className="app-header">
+        <h1>Narsinha Sales</h1>
+        <div className="header-actions">
+          <button className="btn btn-primary" onClick={openAdd}>+ Add Dispatch</button>
         </div>
-        <div style={{ display: 'grid' }}>
-          <h1>
-            NARSINHA <span className="pill">power for all</span>
-          </h1>
-          <div className="muted" style={{ fontSize: 12, marginTop: -6 }}>
-            Engineering Works
-          </div>
-        </div>
-      </div>
+      </header>
 
-      <div className="container">
-        <div className="title">Sales Overview</div>
+      <SalesTable
+        rows={rows}
+        onEdit={handleEdit}
+        onDelete={handleDelete}
+        onView={handleView}
+      />
 
-        <div className="toolbar" style={{ marginBottom: 16, justifyContent: 'space-between' }}>
-          <div className="search" style={{ flex: 1, maxWidth: 520 }}>
-            <span className="search-icon">🔎</span>
-            <input
-              placeholder="Search records by any field..."
-              value={q}
-              onChange={(e) => setQ(e.target.value)}
-            />
-          </div>
-          <div style={{ display: 'flex', gap: 8 }}>
-            <button className="btn" onClick={() => setShowAdd(true)}>
-              + Add Sale
-            </button>
-            <button className="btn secondary" onClick={() => exportToExcel(filtered, 'sales.xlsx')}>
-              ⬇ Export to Excel
-            </button>
-            {CLOUD_SYNC.enabled && <button className="btn ghost">☁︎ Sync to Cloud</button>}
-          </div>
-        </div>
-
-        <SalesTable
-          data={filtered}
-          onView={(rec) => setViewing(rec)}
-          onEdit={(rec) => setEditing(rec)}
-          onDelete={deleteRecord}
-        />
-
-        <div className="footer">
-          Data is stored in your browser using IndexedDB. Works fully offline.
-        </div>
-      </div>
-
-      {showAdd && <AddSaleModal onClose={() => setShowAdd(false)} onSave={addRecord} />}
-      {viewing && <ViewModal record={viewing} onClose={() => setViewing(null)} />}
-      {editing && (
-        <AddSaleModal
-          editOf={editing}
-          onClose={() => setEditing(null)}
-          onSave={saveEdited}
-          defaultDate={editing.date}
-        />
-      )}
+      <AddSaleModal
+        isOpen={isModalOpen}
+        onClose={() => setModalOpen(false)}
+        onSaved={handleSaved}
+        editing={editing}
+      />
     </div>
-  )
+  );
 }
-
-export default App
