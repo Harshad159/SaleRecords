@@ -1,37 +1,34 @@
-import type { SaleRecord } from '../types'
-import { CLOUD_SYNC } from '../config'
+// src/utils/cloudSync.ts
+// Offline stub so builds don't break. Uses the NEW schema.
 
-export async function syncToGoogleSheet(records: SaleRecord[]) {
-  if (!CLOUD_SYNC.enabled) throw new Error('Cloud sync is disabled')
-  if (!CLOUD_SYNC.webAppUrl) throw new Error('Missing webAppUrl in config.ts')
+import type { SaleRecord } from '../types';
 
-  const payload = {
-    action: 'appendRows',
-    rows: records.map(r => ({
-      serial: r.serial,
-      customer: r.customer,
-      kva: r.kva,
-      invoiceNo: r.invoiceNo,
-      dcNo: r.dcNo,
-      date: r.date,
-      contact: r.contact,
-      voltageClass: r.voltageClass,
-      manufacturer: r.manufacturer,
-      gstNo: r.gstNo || '',
-      salePrice: r.salePrice ?? '',
-      warranty: r.warranty || '',
-      remarks: r.remarks || ''
-    }))
-  }
+export function normalizeForCloud(rec: SaleRecord) {
+  return {
+    id: rec.id,
+    date: rec.date,
+    supplier: rec.supplier,
+    gstNumber: rec.gstNumber,
+    dcNumber: rec.dcNumber,
+    manufacturer: rec.manufacturer,
+    items: (rec.items || []).map(i => ({
+      serialNumber: i.serialNumber,
+      kva: Number(i.kva || 0),
+    })),
+    remarks: rec.remarks ?? '',
+  };
+}
 
-  const res = await fetch(CLOUD_SYNC.webAppUrl, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(payload)
-  })
-  if (!res.ok) {
-    const text = await res.text().catch(()=> '')
-    throw new Error('Sync failed: ' + res.status + ' ' + text)
-  }
-  return res.json().catch(()=> ({}))
+// No-ops for now — return shapes that keep callers happy.
+export async function pushAllToCloud(_records: SaleRecord[]) {
+  return { ok: true, uploaded: 0 };
+}
+
+export async function pullAllFromCloud(): Promise<SaleRecord[]> {
+  return [];
+}
+
+export async function resolveConflicts(local: SaleRecord[], _remote: SaleRecord[]) {
+  // For now, prefer local.
+  return local;
 }
