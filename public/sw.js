@@ -1,8 +1,8 @@
 // Simple, safe cache-first service worker for a Vite PWA on GitHub Pages.
 // Put this file in: public/sw.js
 // Bump CACHE_VERSION any time you change files to force an update.
-const CACHE_VERSION = 'v6';
-const CACHE_NAME = `narsinha-sales-${CACHE_VERSION}`;
+const CACHE_VERSION = 'v4';
+const CACHE_NAME = 'narsinha-cache-v4';
 
 // Detect the deployed base path automatically (e.g., "/SaleRecords/")
 const BASE = self.location.pathname.replace(/sw\.js$/, '');
