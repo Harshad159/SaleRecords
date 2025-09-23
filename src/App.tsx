@@ -1,7 +1,8 @@
+// src/App.tsx
 import React, { useEffect, useMemo, useState } from 'react';
 import AddSaleModal from './components/AddSaleModal';
 import type { SaleRecord } from './types';
-import { listSales, deleteSaleSecure } from './storage';
+import { listSales, deleteSaleSecure, migrateFromLocalStorage } from './storage';
 
 export default function App() {
   const [records, setRecords] = useState<SaleRecord[]>([]);
@@ -15,8 +16,12 @@ export default function App() {
   async function refresh() {
     try {
       setLoading(true);
+      // one-time migration safety
+      await migrateFromLocalStorage().catch(() => {});
       const data = await listSales();
-      setRecords(data.sort((a, b) => (a.date < b.date ? 1 : -1)));
+      setRecords(
+        [...data].sort((a: SaleRecord, b: SaleRecord) => (a.date < b.date ? 1 : -1))
+      );
       setError(null);
     } catch (e: any) {
       console.error(e);
@@ -34,7 +39,6 @@ export default function App() {
     setEditing(null);
     setIsAddOpen(true);
   }
-
   function openEdit(rec: SaleRecord) {
     setEditing(rec);
     setIsAddOpen(true);
@@ -43,22 +47,24 @@ export default function App() {
   async function onDelete(rec: SaleRecord) {
     const ok = window.confirm('Delete this record?');
     if (!ok) return;
-    await deleteSaleSecure(rec.id);
-    refresh();
+    const pwd = window.prompt('Enter password to delete:');
+    if (pwd == null) return;
+    try {
+      await deleteSaleSecure(rec.id, pwd);
+      refresh();
+    } catch (e: any) {
+      alert(e?.message || 'Delete failed');
+    }
   }
 
-  // simple search across all fields (except manufacturer if you prefer to exclude)
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
     if (!q) return records;
     return records.filter((r) => {
       const base =
-        `${r.date} ${r.supplier} ${r.gstNumber} ${r.dcNumber} ${r.remarks}`.toLowerCase();
+        `${r.date} ${r.supplier} ${r.gstNumber} ${r.dcNumber} ${r.manufacturer ?? ''} ${r.remarks ?? ''}`.toLowerCase();
       const items = r.items.map(i => `${i.serialNumber} ${i.kva}`).join(' ').toLowerCase();
-      // exclude manufacturer from search if needed:
-      // const manufacturer = '';  // to exclude
-      const manufacturer = r.manufacturer?.toLowerCase() ?? '';
-      return (base + ' ' + manufacturer + ' ' + items).includes(q);
+      return (base + ' ' + items).includes(q);
     });
   }, [records, query]);
 
@@ -121,7 +127,6 @@ export default function App() {
         </div>
       )}
 
-      {/* Add / Edit Modal */}
       <AddSaleModal
         isOpen={isAddOpen}
         onClose={() => setIsAddOpen(false)}
