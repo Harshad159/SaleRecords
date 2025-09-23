@@ -1,162 +1,229 @@
-import React, { useEffect, useState } from 'react'
-import type { SaleRecord } from '../types'
+import React, { useEffect, useMemo, useState } from 'react';
+import type { SaleRecord, SaleItem } from '../types';
+import { addSale, updateSale, getGSTBySupplier } from '../storage';
+import { v4 as uuidv4 } from 'uuid';
 
 type Props = {
-  onClose: () => void
-  onSave: (rec: SaleRecord) => void
-  defaultDate?: string
-  // if provided → we are editing this record
-  editOf?: SaleRecord | null
-}
+  isOpen: boolean;
+  onClose: () => void;
+  onSaved: () => void;     // call after save to refresh table
+  editing?: SaleRecord | null; // if provided, we edit instead of add
+};
 
-const AddSaleModal: React.FC<Props> = ({ onClose, onSave, defaultDate, editOf }) => {
-  const isEdit = !!editOf
+const emptyItem = (): SaleItem => ({ serialNumber: '', kva: 0 });
 
-  const [form, setForm] = useState({
-    serial: '',
-    kva: 0,
-    voltageClass: '11kV/415V',
-    manufacturer: '',
-    date: defaultDate || new Date().toISOString().slice(0, 10),
-    invoiceNo: '',
-    dcNo: '',
-    customer: '',
-    contact: '',
-    gstNo: '',
-    salePrice: 0,
-    warranty: '24 Months',
-    remarks: '',
-  })
+export default function AddSaleModal({ isOpen, onClose, onSaved, editing }: Props) {
+  const isEditing = !!editing;
+
+  const [date, setDate] = useState<string>('');
+  const [supplier, setSupplier] = useState<string>('');
+  const [gstNumber, setGstNumber] = useState<string>('');
+  const [dcNumber, setDcNumber] = useState<string>('');
+  const [manufacturer, setManufacturer] = useState<string>('');
+  const [items, setItems] = useState<SaleItem[]>([emptyItem()]);
+  const [remarks, setRemarks] = useState<string>('');
+  const [autoGSTApplied, setAutoGSTApplied] = useState<boolean>(false);
 
   useEffect(() => {
-    if (editOf) {
-      setForm({
-        serial: editOf.serial || '',
-        kva: Number(editOf.kva) || 0,
-        voltageClass: editOf.voltageClass || '11kV/415V',
-        manufacturer: editOf.manufacturer || '',
-        date: editOf.date || new Date().toISOString().slice(0, 10),
-        invoiceNo: editOf.invoiceNo || '',
-        dcNo: editOf.dcNo || '',
-        customer: editOf.customer || '',
-        contact: editOf.contact || '',
-        gstNo: editOf.gstNo || '',
-        salePrice: Number(editOf.salePrice ?? 0),
-        warranty: editOf.warranty || '24 Months',
-        remarks: editOf.remarks || '',
-      })
+    if (!isOpen) return;
+    if (editing) {
+      setDate(editing.date || '');
+      setSupplier(editing.supplier || '');
+      setGstNumber(editing.gstNumber || '');
+      setDcNumber(editing.dcNumber || '');
+      setManufacturer(editing.manufacturer || '');
+      setItems(editing.items && editing.items.length ? editing.items : [emptyItem()]);
+      setRemarks(editing.remarks || '');
+      setAutoGSTApplied(false);
+    } else {
+      // defaults for new entry
+      const today = new Date();
+      const iso = today.toISOString().slice(0, 10);
+      setDate(iso);
+      setSupplier('');
+      setGstNumber('');
+      setDcNumber('');
+      setManufacturer('');
+      setItems([emptyItem()]);
+      setRemarks('');
+      setAutoGSTApplied(false);
     }
-  }, [editOf])
+  }, [isOpen, editing]);
 
-  const update = (k: string, v: any) => setForm((prev) => ({ ...prev, [k]: v }))
+  // Auto-fill GST when supplier matches existing records.
+  // We only overwrite GST if the field is empty (so user can change it if needed).
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      if (!supplier.trim()) return;
+      if (gstNumber.trim()) return; // respect user-entered value
+      const found = await getGSTBySupplier(supplier.trim());
+      if (!alive) return;
+      if (found) {
+        setGstNumber(found);
+        setAutoGSTApplied(true);
+      } else {
+        setAutoGSTApplied(false);
+      }
+    })();
+    return () => {
+      alive = false;
+    };
+    // include gstNumber so we don't override if user typed one
+  }, [supplier, gstNumber]);
 
-  const submit = () => {
-    if (!form.serial || !form.customer) {
-      alert('Serial and Customer are required')
-      return
+  const addItemRow = () => setItems(prev => [...prev, emptyItem()]);
+  const removeItemRow = (idx: number) => {
+    setItems(prev => prev.length > 1 ? prev.filter((_, i) => i !== idx) : [emptyItem()]);
+  };
+
+  const updateItemField = (idx: number, field: keyof SaleItem, value: string) => {
+    setItems(prev => prev.map((it, i) => i === idx ? {
+      ...it,
+      [field]: field === 'kva' ? Number(value || 0) : value
+    } : it));
+  };
+
+  const canSave = useMemo(() => {
+    if (!date || !supplier || !dcNumber || !manufacturer) return false;
+    if (!items.length) return false;
+    // at least one item with serialNumber
+    if (!items.some(it => String(it.serialNumber).trim().length > 0)) return false;
+    return true;
+  }, [date, supplier, dcNumber, manufacturer, items]);
+
+  async function handleSave() {
+    const record: SaleRecord = {
+      id: editing?.id || uuidv4(),
+      date: date.trim(),
+      supplier: supplier.trim(),
+      gstNumber: gstNumber.trim(),
+      dcNumber: dcNumber.trim(),
+      manufacturer: manufacturer.trim(),
+      items: items
+        .filter(it => String(it.serialNumber).trim().length > 0)
+        .map(it => ({ serialNumber: String(it.serialNumber).trim(), kva: Number(it.kva || 0) })),
+      remarks: remarks.trim(),
+    };
+
+    if (isEditing) {
+      await updateSale(record);
+    } else {
+      await addSale(record);
     }
-    const base = {
-      ...form,
-      kva: Number(form.kva),
-      salePrice: Number(form.salePrice),
-    }
-
-    const rec: SaleRecord = isEdit
-      ? { ...(editOf as SaleRecord), ...base }
-      : { id: cryptoRandom(), ...base }
-
-    onSave(rec)
-    onClose()
+    onSaved();
+    onClose();
   }
 
-  return (
-    <div className="modal-backdrop" onClick={(e) => (e.target === e.currentTarget ? onClose() : null)}>
-      <div className="modal">
-        <header>
-          <h2 style={{ margin: 0 }}>{isEdit ? 'Edit Sales Record' : 'Add New Sales Record'}</h2>
-        </header>
+  if (!isOpen) return null;
 
-        <div style={{ padding: 16 }}>
-          <h3 className="muted" style={{ marginBottom: 8 }}>
-            Transformer Details
-          </h3>
-          <div className="grid">
-            <Field label="Serial Number">
-              <input value={form.serial} onChange={(e) => update('serial', e.target.value)} placeholder="e.g., T-12345" />
-            </Field>
-            <Field label="KVA Rating">
-              <input type="number" value={form.kva} onChange={(e) => update('kva', e.target.value)} />
-            </Field>
-            <Field label="Voltage Class">
-              <input value={form.voltageClass} onChange={(e) => update('voltageClass', e.target.value)} />
-            </Field>
-            <Field label="Manufacturer">
-              <input value={form.manufacturer} onChange={(e) => update('manufacturer', e.target.value)} />
-            </Field>
+  return (
+    <div className="modal-backdrop">
+      <div className="modal">
+        <h2>{isEditing ? 'Edit Dispatch' : 'Add Dispatch'}</h2>
+
+        <div className="form-grid">
+          <label>
+            Date
+            <input type="date" value={date} onChange={e => setDate(e.target.value)} />
+          </label>
+
+          <label>
+            Supplier
+            <input
+              type="text"
+              placeholder="Supplier name"
+              value={supplier}
+              onChange={e => setSupplier(e.target.value)}
+            />
+          </label>
+
+          <label>
+            GST Number {autoGSTApplied && <small className="hint"> (auto-filled)</small>}
+            <input
+              type="text"
+              placeholder="GSTIN"
+              value={gstNumber}
+              onChange={e => setGstNumber(e.target.value)}
+            />
+          </label>
+
+          <label>
+            DC Number
+            <input
+              type="text"
+              placeholder="DC / Challan"
+              value={dcNumber}
+              onChange={e => setDcNumber(e.target.value)}
+            />
+          </label>
+
+          <label>
+            Manufacturer
+            <input
+              type="text"
+              placeholder="Manufacturer"
+              value={manufacturer}
+              onChange={e => setManufacturer(e.target.value)}
+            />
+          </label>
+
+          <label className="full">
+            Remarks
+            <textarea
+              placeholder="Optional"
+              value={remarks}
+              onChange={e => setRemarks(e.target.value)}
+              rows={3}
+            />
+          </label>
+        </div>
+
+        {/* Dynamic Items */}
+        <div className="items-block">
+          <div className="items-header">
+            <h3>Transformers in this DC</h3>
+            <button className="btn" onClick={addItemRow} type="button">+ Add Row</button>
           </div>
 
-          <h3 className="muted" style={{ margin: '18px 0 8px' }}>
-            Sale Details
-          </h3>
-          <div className="grid">
-            <Field label="Sale Date">
-              <input type="date" value={form.date} onChange={(e) => update('date', e.target.value)} />
-            </Field>
-            <Field label="Invoice Number">
-              <input value={form.invoiceNo} onChange={(e) => update('invoiceNo', e.target.value)} />
-            </Field>
-            <Field label="DC No.">
-              <input value={form.dcNo} onChange={(e) => update('dcNo', e.target.value)} />
-            </Field>
-            <Field label="Customer Name">
-              <input value={form.customer} onChange={(e) => update('customer', e.target.value)} />
-            </Field>
-            <Field label="Customer Contact">
-              <input value={form.contact} onChange={(e) => update('contact', e.target.value)} placeholder="Email or Phone" />
-            </Field>
-            <Field label="GST No.">
-              <input value={form.gstNo} onChange={(e) => update('gstNo', e.target.value)} placeholder="e.g., 29ABCDE1234F1Z5" />
-            </Field>
-            <Field label="Sale Price">
-              <input type="number" value={form.salePrice} onChange={(e) => update('salePrice', e.target.value)} />
-            </Field>
-            <Field label="Warranty Period">
-              <select value={form.warranty} onChange={(e) => update('warranty', e.target.value)}>
-                <option>12 Months</option>
-                <option>18 Months</option>
-                <option>24 Months</option>
-                <option>36 Months</option>
-              </select>
-            </Field>
-            <div className="field" style={{ gridColumn: '1 / -1' }}>
-              <label className="label">Remarks</label>
-              <textarea rows={4} value={form.remarks} onChange={(e) => update('remarks', e.target.value)} placeholder="Any notes..." />
-            </div>
+          <div className="items-rows">
+            {items.map((it, idx) => (
+              <div className="item-row" key={idx}>
+                <div className="item-field">
+                  <label>Serial Number</label>
+                  <input
+                    type="text"
+                    placeholder="Serial number"
+                    value={it.serialNumber}
+                    onChange={e => updateItemField(idx, 'serialNumber', e.target.value)}
+                  />
+                </div>
+                <div className="item-field">
+                  <label>KVA</label>
+                  <input
+                    type="number"
+                    min={0}
+                    step="1"
+                    placeholder="e.g. 100"
+                    value={it.kva ?? 0}
+                    onChange={e => updateItemField(idx, 'kva', e.target.value)}
+                  />
+                </div>
+                <div className="item-actions">
+                  <button className="btn btn-danger" type="button" onClick={() => removeItemRow(idx)}>Remove</button>
+                </div>
+              </div>
+            ))}
           </div>
         </div>
 
-        <div className="actions">
-          <button className="btn secondary" onClick={onClose}>
-            Cancel
-          </button>
-          <button className="btn" onClick={submit}>
-            {isEdit ? 'Save Changes' : 'Add Record'}
+        <div className="modal-actions">
+          <button className="btn" onClick={onClose} type="button">Cancel</button>
+          <button className="btn btn-primary" onClick={handleSave} type="button" disabled={!canSave}>
+            {isEditing ? 'Save Changes' : 'Add Dispatch'}
           </button>
         </div>
       </div>
     </div>
-  )
+  );
 }
-
-const Field: React.FC<{ label: string; children: React.ReactNode }> = ({ label, children }) => (
-  <div className="field">
-    <label className="label">{label}</label>
-    {children}
-  </div>
-)
-
-function cryptoRandom() {
-  return Math.random().toString(36).slice(2) + Math.random().toString(36).slice(2)
-}
-
-export default AddSaleModal
